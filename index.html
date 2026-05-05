@@ -1,1 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Departure Board</title>
 
+<style>
+body {
+    margin: 0;
+    background: black;
+    color: #ffcc00;
+    font-family: "Courier New", monospace;
+}
+
+header {
+    text-align: center;
+    font-size: 36px;
+    padding: 12px;
+    border-bottom: 2px solid #ffcc00;
+}
+
+.controls {
+    text-align: center;
+    margin: 10px;
+}
+
+input, button {
+    padding: 8px;
+    font-size: 16px;
+    margin: 3px;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 22px;
+}
+
+th, td {
+    padding: 10px;
+    border-bottom: 1px solid #333;
+    text-align: center;
+}
+
+th { color: white; }
+
+.delay { color: red; font-weight: bold; }
+.ontime { color: #00ff00; font-weight: bold; }
+.cancelled { color: gray; }
+
+</style>
+</head>
+
+<body>
+
+<header>DEPARTURES</header>
+
+<div class="controls">
+    <input id="stationInput" placeholder="Station name">
+    <button onclick="changeStation()">Change</button>
+    <button onclick="fullscreen()">Fullscreen</button>
+</div>
+
+<table>
+<thead>
+<tr>
+<th>Train</th>
+<th>Destination</th>
+<th>Time</th>
+<th>Platform</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody id="board"></tbody>
+</table>
+
+<script>
+let station = "La Spezia Centrale";
+
+const destinations = [
+    "Roma Termini",
+    "Milano Centrale",
+    "Firenze S.M.N.",
+    "Genova P. Principe",
+    "Torino Porta Nuova",
+    "Pisa Centrale",
+    "Bologna Centrale"
+];
+
+function generateData() {
+    let data = [];
+
+    for (let i = 0; i < 12; i++) {
+        const now = new Date();
+        now.setMinutes(now.getMinutes() + i * 5);
+
+        const delay = Math.random() > 0.7 ? Math.floor(Math.random() * 20) : 0;
+
+        data.push({
+            train: "RV " + (2000 + i),
+            destination: destinations[Math.floor(Math.random() * destinations.length)],
+            time: now,
+            delay: delay,
+            platform: Math.floor(Math.random() * 12) + 1,
+            cancelled: Math.random() > 0.95
+        });
+    }
+
+    return data;
+}
+
+function render(data) {
+    const board = document.getElementById("board");
+    board.innerHTML = "";
+
+    data.forEach(t => {
+        const row = document.createElement("tr");
+
+        const time = t.time.toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit"
+        });
+
+        let status = "IN ORARIO";
+        let cls = "ontime";
+
+        if (t.delay > 0) {
+            status = "RITARDO " + t.delay + " min";
+            cls = "delay";
+        }
+
+        if (t.cancelled) {
+            status = "CANCELLATO";
+            cls = "cancelled";
+        }
+
+        row.innerHTML = `
+            <td>${t.train}</td>
+            <td>${t.destination}</td>
+            <td>${time}</td>
+            <td>${t.platform}</td>
+            <td class="${cls}">${status}</td>
+        `;
+
+        board.appendChild(row);
+    });
+}
+
+function update() {
+    const data = generateData();
+    render(data);
+}
+
+function changeStation() {
+    const val = document.getElementById("stationInput").value;
+    if (val) station = val;
+}
+
+function fullscreen() {
+    document.documentElement.requestFullscreen();
+}
+
+// refresh every 60 sec
+update();
+setInterval(update, 60000);
+</script>
+
+</body>
+</html>
