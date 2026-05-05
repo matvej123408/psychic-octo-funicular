@@ -1,185 +1,210 @@
 <!DOCTYPE html>
-<html lang="it">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>PARTENZE</title>
+<title>Departure Board</title>
 
 <style>
 body {
     margin: 0;
     background: black;
-    font-family: monospace;
     color: #ffcc00;
+    font-family: monospace;
 }
 
 header {
-    background: #111;
-    color: #ffcc00;
-    font-size: 42px;
-    padding: 15px;
-    text-align: left;
-}
-
-.station {
-    font-size: 26px;
-    padding-left: 15px;
-}
-
-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 26px;
-}
-
-th, td {
-    padding: 12px;
-    border-bottom: 1px solid #222;
-    text-align: center;
-}
-
-th {
-    color: white;
-}
-
-.delay {
-    color: red;
-    font-weight: bold;
-    animation: blink 1s infinite;
-}
-
-@keyframes blink {
-    50% { opacity: 0.3; }
-}
-
-.ontime {
-    color: #00ff00;
-}
-
-.cancelled {
-    color: gray;
+    font-size: 36px;
+    padding: 10px;
+    border-bottom: 2px solid #ffcc00;
 }
 
 .controls {
     padding: 10px;
 }
 
+input {
+    padding: 8px;
+    font-size: 16px;
+    width: 250px;
+}
+
 button {
     padding: 8px;
     font-size: 16px;
 }
+
+#results {
+    background: #111;
+    max-width: 300px;
+    margin-top: 5px;
+}
+
+.result {
+    padding: 6px;
+    cursor: pointer;
+}
+
+.result:hover {
+    background: #333;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 22px;
+}
+
+th, td {
+    padding: 10px;
+    border-bottom: 1px solid #333;
+    text-align: center;
+}
+
+.delay { color: red; }
+.ontime { color: #00ff00; }
+
 </style>
 </head>
 
 <body>
 
-<header>
-PARTENZE
-<div class="station" id="stationName">LA SPEZIA CENTRALE</div>
-</header>
+<header>DEPARTURES</header>
 
 <div class="controls">
-<button onclick="fullscreen()">Fullscreen</button>
+    <input id="search" placeholder="Search station...">
+    <button onclick="search()">Search</button>
+    <button onclick="fullscreen()">Fullscreen</button>
+
+    <div id="results"></div>
 </div>
 
 <table>
 <thead>
 <tr>
-<th>Treno</th>
-<th>Destinazione</th>
-<th>Ora</th>
-<th>Binario</th>
-<th>Stato</th>
+<th>Train</th>
+<th>Destination</th>
+<th>Time</th>
+<th>Platform</th>
+<th>Status</th>
 </tr>
 </thead>
 <tbody id="board"></tbody>
 </table>
 
 <script>
-const majorCities = ["Roma Termini","Milano Centrale","Torino Porta Nuova","Bologna Centrale"];
-const regionalCities = ["Pisa Centrale","Genova P. Principe","Lucca","Livorno"];
+let stationId = "8011160"; // Berlin default
 
-function pickDestination() {
-    return Math.random() > 0.5
-        ? majorCities[Math.floor(Math.random()*majorCities.length)]
-        : regionalCities[Math.floor(Math.random()*regionalCities.length)];
-}
+// 🔁 Proxy fallback system
+const proxies = [
+    url => "https://api.allorigins.win/raw?url=" + encodeURIComponent(url),
+    url => "https://corsproxy.io/?" + encodeURIComponent(url)
+];
 
-function getTrainType(dest) {
-    if (majorCities.includes(dest)) {
-        return Math.random() > 0.5 ? "FR" : "IC";
+async function fetchWithFallback(url) {
+    for (let p of proxies) {
+        try {
+            const res = await fetch(p(url));
+            const text = await res.text();
+
+            // detect HTML error
+            if (text.startsWith("<")) continue;
+
+            return JSON.parse(text);
+        } catch (e) {
+            console.log("Proxy failed, trying next...");
+        }
     }
-    return Math.random() > 0.3 ? "R" : "RV";
+
+    throw new Error("All proxies failed");
 }
 
-function generateData() {
-    let data = [];
+// 🔍 SEARCH stations
+async function search() {
+    const q = document.getElementById("search").value;
+    if (!q) return;
 
-    for (let i = 0; i < 12; i++) {
-        const now = new Date();
-        now.setMinutes(now.getMinutes() + i * 5);
+    try {
+        const data = await fetchWithFallback(
+            `https://v5.transport.rest/locations?query=${encodeURIComponent(q)}&results=5`
+        );
 
-        const dest = pickDestination();
-        const type = getTrainType(dest);
+        const box = document.getElementById("results");
+        box.innerHTML = "";
 
-        const delay = Math.random() > 0.7 ? Math.floor(Math.random() * 15) : 0;
+        data.forEach(s => {
+            const div = document.createElement("div");
+            div.className = "result";
+            div.innerText = s.name;
 
-        data.push({
-            train: type + " " + (Math.floor(Math.random()*9000)+1000),
-            dest: dest,
-            time: now,
-            delay: delay,
-            platform: Math.floor(Math.random()*10)+1,
-            cancelled: Math.random() > 0.95
+            div.onclick = () => {
+                stationId = s.id;
+                box.innerHTML = "";
+                load();
+            };
+
+            box.appendChild(div);
         });
+
+    } catch (e) {
+        console.error("Search failed");
     }
-
-    return data;
 }
 
-function render(data) {
-    const board = document.getElementById("board");
-    board.innerHTML = "";
+// 🚆 LOAD departures
+async function load() {
+    try {
+        const data = await fetchWithFallback(
+            `https://v5.transport.rest/stops/${stationId}/departures?duration=60`
+        );
 
-    data.forEach(t => {
-        const row = document.createElement("tr");
+        const board = document.getElementById("board");
+        board.innerHTML = "";
 
-        const time = t.time.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});
+        (data.departures || []).slice(0, 12).forEach(d => {
+            const row = document.createElement("tr");
 
-        let status = "IN ORARIO";
-        let cls = "ontime";
+            const planned = new Date(d.plannedWhen);
+            const actual = d.when ? new Date(d.when) : planned;
 
-        if (t.delay > 0) {
-            status = "RITARDO " + t.delay + "'";
-            cls = "delay";
-        }
+            const delay = Math.round((actual - planned) / 60000);
 
-        if (t.cancelled) {
-            status = "CANCELLATO";
-            cls = "cancelled";
-        }
+            const time = planned.toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit"
+            });
 
-        row.innerHTML = `
-            <td>${t.train}</td>
-            <td>${t.dest}</td>
-            <td>${time}</td>
-            <td>${t.platform}</td>
-            <td class="${cls}">${status}</td>
-        `;
+            let status = "ON TIME";
+            let cls = "ontime";
 
-        board.appendChild(row);
-    });
+            if (delay > 0) {
+                status = "+" + delay + " min";
+                cls = "delay";
+            }
+
+            row.innerHTML = `
+                <td>${d.line?.name || "?"}</td>
+                <td>${d.direction}</td>
+                <td>${time}</td>
+                <td>${d.platform || "--"}</td>
+                <td class="${cls}">${status}</td>
+            `;
+
+            board.appendChild(row);
+        });
+
+    } catch (e) {
+        console.error("Load failed");
+    }
 }
 
-function update() {
-    render(generateData());
-}
-
+// 🖥 fullscreen
 function fullscreen() {
     document.documentElement.requestFullscreen();
 }
 
-update();
-setInterval(update, 60000);
+// auto refresh
+load();
+setInterval(load, 60000);
 </script>
 
 </body>
