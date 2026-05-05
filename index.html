@@ -1,108 +1,114 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="it">
 <head>
 <meta charset="UTF-8">
-<title>Departure Board</title>
+<title>PARTENZE</title>
 
 <style>
 body {
     margin: 0;
     background: black;
+    font-family: monospace;
     color: #ffcc00;
-    font-family: "Courier New", monospace;
 }
 
 header {
-    text-align: center;
-    font-size: 36px;
-    padding: 12px;
-    border-bottom: 2px solid #ffcc00;
+    background: #111;
+    color: #ffcc00;
+    font-size: 42px;
+    padding: 15px;
+    text-align: left;
 }
 
-.controls {
-    text-align: center;
-    margin: 10px;
-}
-
-input, button {
-    padding: 8px;
-    font-size: 16px;
-    margin: 3px;
+.station {
+    font-size: 26px;
+    padding-left: 15px;
 }
 
 table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 22px;
+    font-size: 26px;
 }
 
 th, td {
-    padding: 10px;
-    border-bottom: 1px solid #333;
+    padding: 12px;
+    border-bottom: 1px solid #222;
     text-align: center;
 }
 
-th { color: white; }
+th {
+    color: white;
+}
 
-.delay { color: red; font-weight: bold; }
-.ontime { color: #00ff00; font-weight: bold; }
-.cancelled { color: gray; }
+.delay {
+    color: red;
+    font-weight: bold;
+    animation: blink 1s infinite;
+}
 
+@keyframes blink {
+    50% { opacity: 0.3; }
+}
+
+.ontime {
+    color: #00ff00;
+}
+
+.cancelled {
+    color: gray;
+}
+
+.controls {
+    padding: 10px;
+}
+
+button {
+    padding: 8px;
+    font-size: 16px;
+}
 </style>
 </head>
 
 <body>
 
-<header>DEPARTURES</header>
+<header>
+PARTENZE
+<div class="station" id="stationName">LA SPEZIA CENTRALE</div>
+</header>
 
 <div class="controls">
-    <input id="stationInput" placeholder="Station name">
-    <button onclick="changeStation()">Change</button>
-    <button onclick="fullscreen()">Fullscreen</button>
+<button onclick="fullscreen()">Fullscreen</button>
 </div>
 
 <table>
 <thead>
 <tr>
-<th>Train</th>
-<th>Destination</th>
-<th>Time</th>
-<th>Platform</th>
-<th>Status</th>
+<th>Treno</th>
+<th>Destinazione</th>
+<th>Ora</th>
+<th>Binario</th>
+<th>Stato</th>
 </tr>
 </thead>
 <tbody id="board"></tbody>
 </table>
 
 <script>
-let station = "La Spezia Centrale";
+const majorCities = ["Roma Termini","Milano Centrale","Torino Porta Nuova","Bologna Centrale"];
+const regionalCities = ["Pisa Centrale","Genova P. Principe","Lucca","Livorno"];
 
-// 🚆 realistic Italian train types
-const trainTypes = [
-    { prefix: "R", name: "Regionale" },
-    { prefix: "RV", name: "Regionale Veloce" },
-    { prefix: "IC", name: "InterCity" },
-    { prefix: "FR", name: "Frecciarossa" },
-    { prefix: "FA", name: "Frecciargento" }
-];
+function pickDestination() {
+    return Math.random() > 0.5
+        ? majorCities[Math.floor(Math.random()*majorCities.length)]
+        : regionalCities[Math.floor(Math.random()*regionalCities.length)];
+}
 
-const destinations = [
-    "Roma Termini",
-    "Milano Centrale",
-    "Firenze S.M.N.",
-    "Genova P. Principe",
-    "Torino Porta Nuova",
-    "Pisa Centrale",
-    "Bologna Centrale"
-];
-
-function generateTrain() {
-    const type = trainTypes[Math.floor(Math.random() * trainTypes.length)];
-
-    return {
-        code: type.prefix + " " + (Math.floor(Math.random() * 9000) + 1000),
-        typeName: type.name
-    };
+function getTrainType(dest) {
+    if (majorCities.includes(dest)) {
+        return Math.random() > 0.5 ? "FR" : "IC";
+    }
+    return Math.random() > 0.3 ? "R" : "RV";
 }
 
 function generateData() {
@@ -112,16 +118,17 @@ function generateData() {
         const now = new Date();
         now.setMinutes(now.getMinutes() + i * 5);
 
-        const delay = Math.random() > 0.7 ? Math.floor(Math.random() * 20) : 0;
-        const train = generateTrain();
+        const dest = pickDestination();
+        const type = getTrainType(dest);
+
+        const delay = Math.random() > 0.7 ? Math.floor(Math.random() * 15) : 0;
 
         data.push({
-            train: train.code,
-            type: train.typeName,
-            destination: destinations[Math.floor(Math.random() * destinations.length)],
+            train: type + " " + (Math.floor(Math.random()*9000)+1000),
+            dest: dest,
             time: now,
             delay: delay,
-            platform: Math.floor(Math.random() * 12) + 1,
+            platform: Math.floor(Math.random()*10)+1,
             cancelled: Math.random() > 0.95
         });
     }
@@ -136,16 +143,13 @@ function render(data) {
     data.forEach(t => {
         const row = document.createElement("tr");
 
-        const time = t.time.toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit"
-        });
+        const time = t.time.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});
 
         let status = "IN ORARIO";
         let cls = "ontime";
 
         if (t.delay > 0) {
-            status = "RITARDO " + t.delay + " min";
+            status = "RITARDO " + t.delay + "'";
             cls = "delay";
         }
 
@@ -156,7 +160,7 @@ function render(data) {
 
         row.innerHTML = `
             <td>${t.train}</td>
-            <td>${t.destination}<br><small>${t.type}</small></td>
+            <td>${t.dest}</td>
             <td>${time}</td>
             <td>${t.platform}</td>
             <td class="${cls}">${status}</td>
@@ -167,20 +171,13 @@ function render(data) {
 }
 
 function update() {
-    const data = generateData();
-    render(data);
-}
-
-function changeStation() {
-    const val = document.getElementById("stationInput").value;
-    if (val) station = val;
+    render(generateData());
 }
 
 function fullscreen() {
     document.documentElement.requestFullscreen();
 }
 
-// refresh
 update();
 setInterval(update, 60000);
 </script>
