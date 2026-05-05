@@ -77,6 +77,15 @@ th { color: white; }
 <script>
 let station = "La Spezia Centrale";
 
+// 🚆 realistic Italian train types
+const trainTypes = [
+    { prefix: "R", name: "Regionale" },
+    { prefix: "RV", name: "Regionale Veloce" },
+    { prefix: "IC", name: "InterCity" },
+    { prefix: "FR", name: "Frecciarossa" },
+    { prefix: "FA", name: "Frecciargento" }
+];
+
 const destinations = [
     "Roma Termini",
     "Milano Centrale",
@@ -87,6 +96,15 @@ const destinations = [
     "Bologna Centrale"
 ];
 
+function generateTrain() {
+    const type = trainTypes[Math.floor(Math.random() * trainTypes.length)];
+
+    return {
+        code: type.prefix + " " + (Math.floor(Math.random() * 9000) + 1000),
+        typeName: type.name
+    };
+}
+
 function generateData() {
     let data = [];
 
@@ -95,9 +113,11 @@ function generateData() {
         now.setMinutes(now.getMinutes() + i * 5);
 
         const delay = Math.random() > 0.7 ? Math.floor(Math.random() * 20) : 0;
+        const train = generateTrain();
 
         data.push({
-            train: "RV " + (2000 + i),
+            train: train.code,
+            type: train.typeName,
             destination: destinations[Math.floor(Math.random() * destinations.length)],
             time: now,
             delay: delay,
@@ -136,7 +156,7 @@ function render(data) {
 
         row.innerHTML = `
             <td>${t.train}</td>
-            <td>${t.destination}</td>
+            <td>${t.destination}<br><small>${t.type}</small></td>
             <td>${time}</td>
             <td>${t.platform}</td>
             <td class="${cls}">${status}</td>
@@ -160,7 +180,7 @@ function fullscreen() {
     document.documentElement.requestFullscreen();
 }
 
-// refresh every 60 sec
+// refresh
 update();
 setInterval(update, 60000);
 </script>
