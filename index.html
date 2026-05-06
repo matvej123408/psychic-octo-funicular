@@ -1,68 +1,98 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="it">
 <head>
 <meta charset="UTF-8">
-<title>Departure Board</title>
+<title>DEPARTURES BOARD</title>
 
 <style>
-body {
-    margin: 0;
-    background: black;
-    color: #ffcc00;
-    font-family: monospace;
+body{
+    margin:0;
+    background:black;
+    color:#ffcc00;
+    font-family:Arial;
 }
 
-header {
-    font-size: 36px;
-    padding: 10px;
-    border-bottom: 2px solid #ffcc00;
+header{
+    background:#111;
+    padding:15px;
+    text-align:center;
+    font-size:40px;
+    letter-spacing:5px;
+    border-bottom:4px solid #ffcc00;
 }
 
-.controls {
-    padding: 10px;
+#menu{
+    position:relative;
+    padding:10px;
+    background:#0a0a0a;
+    display:flex;
+    gap:10px;
+    align-items:center;
 }
 
-input {
-    padding: 8px;
-    font-size: 16px;
-    width: 250px;
+#search{
+    padding:10px;
+    width:320px;
+    background:#111;
+    color:#ffcc00;
+    border:1px solid #333;
 }
 
-button {
-    padding: 8px;
-    font-size: 16px;
+select,button{
+    padding:10px;
+    background:#111;
+    color:#ffcc00;
+    border:1px solid #333;
+    cursor:pointer;
 }
 
-#results {
-    background: #111;
-    max-width: 300px;
-    margin-top: 5px;
+#results{
+    position:absolute;
+    top:50px;
+    left:10px;
+    width:320px;
+    background:#111;
+    border:1px solid #333;
+    max-height:300px;
+    overflow:auto;
+    display:none;
+    z-index:1000;
 }
 
-.result {
-    padding: 6px;
-    cursor: pointer;
+.item{
+    padding:10px;
+    cursor:pointer;
+}
+.item:hover{background:#222}
+
+#drop{
+    margin:10px;
+    padding:15px;
+    border:2px dashed #444;
+    text-align:center;
 }
 
-.result:hover {
-    background: #333;
+table{
+    width:100%;
+    border-collapse:collapse;
+    font-size:24px;
 }
 
-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 22px;
+th{
+    background:#111;
+    padding:12px;
+    border-bottom:3px solid #ffcc00;
 }
 
-th, td {
-    padding: 10px;
-    border-bottom: 1px solid #333;
-    text-align: center;
+td{
+    padding:12px;
+    text-align:center;
+    border-bottom:1px solid #222;
 }
 
-.delay { color: red; }
-.ontime { color: #00ff00; }
+tr:nth-child(even){background:#0a0a0a;}
 
+.on{color:#00ff66;}
 </style>
 </head>
 
@@ -70,141 +100,339 @@ th, td {
 
 <header>DEPARTURES</header>
 
-<div class="controls">
+<div id="menu">
     <input id="search" placeholder="Search station...">
-    <button onclick="search()">Search</button>
-    <button onclick="fullscreen()">Fullscreen</button>
+
+    <select id="lang" onchange="setLang(this.value)">
+        <option value="it">Italiano</option>
+        <option value="en">English</option>
+        <option value="de">Deutsch</option>
+        <option value="ua">Українська</option>
+    </select>
+
+    <button onclick="toggleFullscreen()">FULLSCREEN</button>
 
     <div id="results"></div>
 </div>
 
+<div id="drop">📦 DROP GTFS ZIP</div>
+
 <table>
 <thead>
 <tr>
-<th>Train</th>
+<th>Line</th>
 <th>Destination</th>
-<th>Time</th>
-<th>Platform</th>
+<th>Departure</th>
 <th>Status</th>
 </tr>
 </thead>
 <tbody id="board"></tbody>
 </table>
 
+<audio id="gong" src="gong.mp3"></audio>
+
 <script>
-let stationId = "8011160"; // Berlin default
 
-// 🔁 Proxy fallback system
-const proxies = [
-    url => "https://api.allorigins.win/raw?url=" + encodeURIComponent(url),
-    url => "https://corsproxy.io/?" + encodeURIComponent(url)
-];
+/* =====================
+   DATA
+===================== */
+let stops=[], stopTimes=[], trips=[], routes=[];
+let currentStop=null;
 
-async function fetchWithFallback(url) {
-    for (let p of proxies) {
-        try {
-            const res = await fetch(p(url));
-            const text = await res.text();
+let spoken={};
+let announced10min={};
+let announced5min={};
+let announced1min={};
 
-            // detect HTML error
-            if (text.startsWith("<")) continue;
+let language="it";
 
-            return JSON.parse(text);
-        } catch (e) {
-            console.log("Proxy failed, trying next...");
+/* =====================
+   LANGUAGE
+===================== */
+function setLang(l){
+    language=l;
+}
+
+/* =====================
+   CSV PARSER
+===================== */
+function parseCSV(text){
+    const rows=[];
+    let cur="", row=[], q=false;
+
+    for(let i=0;i<text.length;i++){
+        const c=text[i];
+
+        if(c=='"') q=!q;
+        else if(c==',' && !q){
+            row.push(cur); cur="";
         }
+        else if(c=='\n' && !q){
+            row.push(cur);
+            rows.push(row);
+            row=[]; cur="";
+        }
+        else cur+=c;
     }
 
-    throw new Error("All proxies failed");
-}
+    const headers=rows[0];
 
-// 🔍 SEARCH stations
-async function search() {
-    const q = document.getElementById("search").value;
-    if (!q) return;
-
-    try {
-        const data = await fetchWithFallback(
-            `https://v5.transport.rest/locations?query=${encodeURIComponent(q)}&results=5`
-        );
-
-        const box = document.getElementById("results");
-        box.innerHTML = "";
-
-        data.forEach(s => {
-            const div = document.createElement("div");
-            div.className = "result";
-            div.innerText = s.name;
-
-            div.onclick = () => {
-                stationId = s.id;
-                box.innerHTML = "";
-                load();
-            };
-
-            box.appendChild(div);
+    return rows.slice(1).map(r=>{
+        const o={};
+        headers.forEach((h,i)=>{
+            o[h.trim()] = (r[i]||"").trim();
         });
-
-    } catch (e) {
-        console.error("Search failed");
-    }
+        return o;
+    });
 }
 
-// 🚆 LOAD departures
-async function load() {
-    try {
-        const data = await fetchWithFallback(
-            `https://v5.transport.rest/stops/${stationId}/departures?duration=60`
-        );
-
-        const board = document.getElementById("board");
-        board.innerHTML = "";
-
-        (data.departures || []).slice(0, 12).forEach(d => {
-            const row = document.createElement("tr");
-
-            const planned = new Date(d.plannedWhen);
-            const actual = d.when ? new Date(d.when) : planned;
-
-            const delay = Math.round((actual - planned) / 60000);
-
-            const time = planned.toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit"
-            });
-
-            let status = "ON TIME";
-            let cls = "ontime";
-
-            if (delay > 0) {
-                status = "+" + delay + " min";
-                cls = "delay";
-            }
-
-            row.innerHTML = `
-                <td>${d.line?.name || "?"}</td>
-                <td>${d.direction}</td>
-                <td>${time}</td>
-                <td>${d.platform || "--"}</td>
-                <td class="${cls}">${status}</td>
-            `;
-
-            board.appendChild(row);
-        });
-
-    } catch (e) {
-        console.error("Load failed");
-    }
+/* =====================
+   NORMALIZE
+===================== */
+function normalize(t){
+    return (t||"")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g,"");
 }
 
-// 🖥 fullscreen
-function fullscreen() {
+/* =====================
+   LOAD GTFS
+===================== */
+drop.ondragover=e=>e.preventDefault();
+
+drop.ondrop=async e=>{
+    e.preventDefault();
+
+    const file=e.dataTransfer.files[0];
+    const JSZip=(await import("https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm")).default;
+    const zip=await JSZip.loadAsync(await file.arrayBuffer());
+
+    stops=parseCSV(await zip.file("stops.txt").async("string"));
+    stopTimes=parseCSV(await zip.file("stop_times.txt").async("string"));
+    trips=parseCSV(await zip.file("trips.txt").async("string"));
+    routes=parseCSV(await zip.file("routes.txt").async("string"));
+
+    alert("GTFS loaded!");
+};
+
+/* =====================
+   SEARCH
+===================== */
+search.oninput=()=>{
+    const q=normalize(search.value);
+    results.innerHTML="";
+
+    if(!q) return results.style.display="none";
+
+    stops
+    .filter(s=>normalize(s.stop_name).includes(q))
+    .slice(0,50)
+    .forEach(s=>{
+        const d=document.createElement("div");
+        d.className="item";
+        d.textContent=s.stop_name;
+
+        d.onclick=()=>{
+            currentStop=s.stop_id;
+            search.value=s.stop_name;
+            results.style.display="none";
+            render();
+        };
+
+        results.appendChild(d);
+    });
+
+    results.style.display="block";
+};
+
+document.addEventListener("click",e=>{
+    if(!menu.contains(e.target)){
+        results.style.display="none";
+    }
+});
+
+/* =====================
+   HELPERS
+===================== */
+function getRoute(id){
+    const t=trips.find(x=>x.trip_id===id);
+    const r=routes.find(x=>x.route_id===t?.route_id);
+    return r?.route_short_name || "BUS";
+}
+
+function getDest(id){
+    const t=trips.find(x=>x.trip_id===id);
+    return t?.trip_headsign || "UNKNOWN";
+}
+
+function timeToSeconds(t){
+    if(!t) return 999999;
+    const [h,m,s] = t.split(":").map(Number);
+    return h*3600 + m*60 + (s||0);
+}
+
+/* =====================
+   COUNTDOWN
+===================== */
+function getTimeLeft(depTime){
+
+    const now=new Date();
+
+    const nowSec =
+        now.getHours()*3600 +
+        now.getMinutes()*60 +
+        now.getSeconds();
+
+    const depSec=timeToSeconds(depTime);
+
+    let diff=depSec-nowSec;
+
+    if(diff<=0) return "DEPARTED";
+
+    const h=Math.floor(diff/3600);
+    diff%=3600;
+
+    const m=Math.floor(diff/60);
+    const s=diff%60;
+
+    if(h>0){
+        return `⏱ ${h}h ${m}m`;
+    }
+
+    if(m>0){
+        return `⏱ ${m}m ${s}s`;
+    }
+
+    return `⏱ ${s}s`;
+}
+
+/* =====================
+   ANNOUNCEMENT (FIXED)
+===================== */
+async function announce(line,dest,msg){
+
+    const gong=document.getElementById("gong");
+    try{await gong.play();}catch(e){}
+
+    let finalMsg=msg;
+    let lang="it-IT";
+
+    if(language==="it") lang="it-IT";
+    if(language==="en") lang="en-US";
+    if(language==="de") lang="de-DE";
+    if(language==="ua") lang="uk-UA";
+
+    const u=new SpeechSynthesisUtterance(finalMsg);
+    u.lang=lang;
+    u.rate=0.9;
+
+    speechSynthesis.speak(u);
+}
+
+/* =====================
+   RENDER
+===================== */
+function render(){
+
+    if(!currentStop) return;
+
+    const now=new Date();
+
+    const nowSec =
+        now.getHours()*3600 +
+        now.getMinutes()*60 +
+        now.getSeconds();
+
+    const board=document.getElementById("board");
+    board.innerHTML="";
+
+    let data=stopTimes
+        .filter(t =>
+            t.stop_id===currentStop &&
+            (t.stop_sequence==="1" || t.stop_sequence===1)
+        )
+        .map(t=>({
+            trip_id:t.trip_id,
+            time:t.departure_time||t.arrival_time,
+            sec:timeToSeconds(t.departure_time||t.arrival_time)
+        }))
+        .filter(t=>t.sec>=nowSec);
+
+    const map=new Map();
+
+    data.forEach(d=>{
+        const line=getRoute(d.trip_id);
+        const dest=getDest(d.trip_id);
+        const key=line+"|"+dest+"|"+d.time;
+
+        if(!map.has(key)) map.set(key,d);
+    });
+
+    const clean=[...map.values()]
+        .sort((a,b)=>a.sec-b.sec)
+        .slice(0,15);
+
+    clean.forEach(d=>{
+
+        const line=getRoute(d.trip_id);
+        const dest=getDest(d.trip_id);
+
+        const diff=d.sec-nowSec;
+
+        /* 🔟 10 MIN */
+        if(diff<=600 && diff>595 && !announced10min[d.trip_id]){
+
+            announced10min[d.trip_id]=true;
+
+            const msg=`There is Bus ${line} to ${dest} ten minute away.`;
+            announce(line,dest,msg);
+        }
+
+        /* 🟡 5 MIN */
+        if(diff<=300 && diff>295 && !announced5min[d.trip_id]){
+
+            announced5min[d.trip_id]=true;
+
+            const msg=`There is Bus ${line} to ${dest} five minute away.`;
+            announce(line,dest,msg);
+        }
+
+        /* 🔴 1 MIN */
+        if(diff<=60 && diff>55 && !announced1min[d.trip_id]){
+
+            announced1min[d.trip_id]=true;
+
+            const msg=`The Bus Number ${line} to ${dest} is arriving please let passengers exit first.`;
+            announce(line,dest,msg);
+        }
+
+        const tr=document.createElement("tr");
+
+        tr.innerHTML=`
+        <td>${line}</td>
+        <td>${dest}</td>
+        <td>${getTimeLeft(d.time)}</td>
+        <td class="on">IN ORARIO</td>
+        `;
+
+        board.appendChild(tr);
+
+        if(!spoken[line]){
+            announce(line,dest,`The. Bus ${line} to ${dest} departing.`);
+            spoken[line]=true;
+        }
+    });
+}
+
+/* LIVE */
+setInterval(render,1000);
+
+/* FULLSCREEN */
+function toggleFullscreen(){
     document.documentElement.requestFullscreen();
 }
 
-// auto refresh
-load();
-setInterval(load, 60000);
 </script>
 
 </body>
