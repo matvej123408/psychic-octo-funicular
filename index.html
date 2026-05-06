@@ -93,16 +93,6 @@ td{
 tr:nth-child(even){background:#0a0a0a;}
 
 .on{color:#00ff66;}
-
-.blink{
-    animation:blink 1s infinite;
-}
-
-@keyframes blink{
-    0%{opacity:1;}
-    50%{opacity:0;}
-    100%{opacity:1;}
-}
 </style>
 </head>
 
@@ -119,6 +109,9 @@ tr:nth-child(even){background:#0a0a0a;}
         <option value="de">Deutsch</option>
         <option value="ua">Українська</option>
     </select>
+
+    <!-- VOICE SELECT (ADDED) -->
+    <select id="voiceSelect"></select>
 
     <button onclick="toggleFullscreen()">FULLSCREEN</button>
 
@@ -145,11 +138,50 @@ tr:nth-child(even){background:#0a0a0a;}
 
 let stops=[], stopTimes=[], trips=[], routes=[];
 let currentStop=null;
+
 let spoken={};
 let announced10min={};
 let announced5min={};
 let announced1min={};
+
 let language="it";
+
+/* ================= VOICE SYSTEM ================= */
+
+let voices=[];
+let selectedVoice=null;
+
+function loadVoices(){
+    voices = speechSynthesis.getVoices();
+    const voiceSelect = document.getElementById("voiceSelect");
+
+    voiceSelect.innerHTML="";
+
+    voices.forEach((v,i)=>{
+        const opt=document.createElement("option");
+        opt.value=i;
+        opt.textContent=`${v.name} (${v.lang})`;
+        voiceSelect.appendChild(opt);
+    });
+
+    voiceSelect.onchange=()=>{
+        selectedVoice=voices[voiceSelect.value];
+        localStorage.setItem("voiceIndex", voiceSelect.value);
+    };
+
+    const saved=localStorage.getItem("voiceIndex");
+    if(saved && voices[saved]){
+        voiceSelect.value=saved;
+        selectedVoice=voices[saved];
+    } else {
+        selectedVoice=voices[0];
+    }
+}
+
+speechSynthesis.onvoiceschanged=loadVoices;
+loadVoices();
+
+/* ================= LANGUAGE ================= */
 
 function setLang(l){ language=l; }
 
@@ -180,6 +212,8 @@ function normalize(t){
     return (t||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
 }
 
+/* ================= DROP GTFS ================= */
+
 drop.ondragover=e=>e.preventDefault();
 
 drop.ondrop=async e=>{
@@ -196,6 +230,8 @@ drop.ondrop=async e=>{
 
     alert("GTFS loaded!");
 };
+
+/* ================= SEARCH ================= */
 
 search.oninput=()=>{
     const q=normalize(search.value);
@@ -229,6 +265,8 @@ document.addEventListener("click",e=>{
     }
 });
 
+/* ================= DATA HELPERS ================= */
+
 function getRoute(id){
     const t=trips.find(x=>x.trip_id===id);
     const r=routes.find(x=>x.route_id===t?.route_id);
@@ -245,6 +283,31 @@ function timeToSeconds(t){
     const [h,m,s]=t.split(":").map(Number);
     return h*3600 + m*60 + (s||0);
 }
+
+/* ================= ANNOUNCEMENTS (RESTORED) ================= */
+
+async function announce(line,dest,msg){
+
+    const gong=document.getElementById("gong");
+    try{await gong.play();}catch(e){}
+
+    const u=new SpeechSynthesisUtterance(msg);
+
+    u.lang =
+        language==="it"?"it-IT":
+        language==="en"?"en-US":
+        language==="de"?"de-DE":
+        "uk-UA";
+
+    if(selectedVoice){
+        u.voice=selectedVoice;
+    }
+
+    u.rate=0.9;
+    speechSynthesis.speak(u);
+}
+
+/* ================= STATUS ================= */
 
 function getStatus(diff){
     if(diff > 60) return "IN ORARIO";
@@ -274,25 +337,8 @@ function getTimeLeft(depTime){
     return `⏱ ${s}s`;
 }
 
-/* ================= OLD ANNOUNCEMENTS RESTORED ================= */
-async function announce(line,dest,msg){
+/* ================= RENDER (FULL RESTORED LOGIC) ================= */
 
-    const gong=document.getElementById("gong");
-    try{await gong.play();}catch(e){}
-
-    const u=new SpeechSynthesisUtterance(msg);
-
-    u.lang =
-        language==="it"?"it-IT":
-        language==="en"?"en-US":
-        language==="de"?"de-DE":
-        "uk-UA";
-
-    u.rate=0.9;
-    speechSynthesis.speak(u);
-}
-
-/* ================= RENDER ================= */
 function render(){
 
     if(!currentStop) return;
@@ -306,8 +352,7 @@ function render(){
     let data=stopTimes
         .filter(t =>
             t.stop_id===currentStop &&
-            t.departure_time &&
-            t.stop_sequence == 1
+            t.departure_time
         )
         .map(t=>({
             trip_id:t.trip_id,
