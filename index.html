@@ -93,6 +93,16 @@ td{
 tr:nth-child(even){background:#0a0a0a;}
 
 .on{color:#00ff66;}
+
+.blink{
+    animation:blink 1s infinite;
+}
+
+@keyframes blink{
+    0%{opacity:1;}
+    50%{opacity:0;}
+    100%{opacity:1;}
+}
 </style>
 </head>
 
@@ -133,45 +143,25 @@ tr:nth-child(even){background:#0a0a0a;}
 
 <script>
 
-/* =====================
-   DATA
-===================== */
 let stops=[], stopTimes=[], trips=[], routes=[];
 let currentStop=null;
-
 let spoken={};
 let announced10min={};
 let announced5min={};
 let announced1min={};
-
 let language="it";
 
-/* =====================
-   LANGUAGE
-===================== */
-function setLang(l){
-    language=l;
-}
+function setLang(l){ language=l; }
 
-/* =====================
-   CSV PARSER
-===================== */
 function parseCSV(text){
     const rows=[];
     let cur="", row=[], q=false;
 
     for(let i=0;i<text.length;i++){
         const c=text[i];
-
         if(c=='"') q=!q;
-        else if(c==',' && !q){
-            row.push(cur); cur="";
-        }
-        else if(c=='\n' && !q){
-            row.push(cur);
-            rows.push(row);
-            row=[]; cur="";
-        }
+        else if(c==',' && !q){ row.push(cur); cur=""; }
+        else if(c=='\n' && !q){ row.push(cur); rows.push(row); row=[]; cur=""; }
         else cur+=c;
     }
 
@@ -186,19 +176,10 @@ function parseCSV(text){
     });
 }
 
-/* =====================
-   NORMALIZE
-===================== */
 function normalize(t){
-    return (t||"")
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g,"");
+    return (t||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
 }
 
-/* =====================
-   LOAD GTFS
-===================== */
 drop.ondragover=e=>e.preventDefault();
 
 drop.ondrop=async e=>{
@@ -216,13 +197,9 @@ drop.ondrop=async e=>{
     alert("GTFS loaded!");
 };
 
-/* =====================
-   SEARCH
-===================== */
 search.oninput=()=>{
     const q=normalize(search.value);
     results.innerHTML="";
-
     if(!q) return results.style.display="none";
 
     stops
@@ -252,9 +229,6 @@ document.addEventListener("click",e=>{
     }
 });
 
-/* =====================
-   HELPERS
-===================== */
 function getRoute(id){
     const t=trips.find(x=>x.trip_id===id);
     const r=routes.find(x=>x.route_id===t?.route_id);
@@ -268,81 +242,63 @@ function getDest(id){
 
 function timeToSeconds(t){
     if(!t) return 999999;
-    const [h,m,s] = t.split(":").map(Number);
+    const [h,m,s]=t.split(":").map(Number);
     return h*3600 + m*60 + (s||0);
 }
 
-/* =====================
-   COUNTDOWN
-===================== */
+function getStatus(diff){
+    if(diff > 60) return "IN ORARIO";
+    if(diff <= 60 && diff > 20) return "ARRIVING";
+    if(diff <= 20 && diff > 1) return "ARRIVED";
+    if(diff <= 1 && diff >= 0) return "DEPARTING";
+    if(diff < 0 && diff >= -6) return "DEPARTED";
+    return "DEPARTED";
+}
+
 function getTimeLeft(depTime){
-
     const now=new Date();
-
-    const nowSec =
-        now.getHours()*3600 +
-        now.getMinutes()*60 +
-        now.getSeconds();
+    const nowSec=now.getHours()*3600 + now.getMinutes()*60 + now.getSeconds();
 
     const depSec=timeToSeconds(depTime);
-
     let diff=depSec-nowSec;
 
     if(diff<=0) return "DEPARTED";
 
     const h=Math.floor(diff/3600);
     diff%=3600;
-
     const m=Math.floor(diff/60);
     const s=diff%60;
 
-    if(h>0){
-        return `⏱ ${h}h ${m}m`;
-    }
-
-    if(m>0){
-        return `⏱ ${m}m ${s}s`;
-    }
-
+    if(h>0) return `⏱ ${h}h ${m}m`;
+    if(m>0) return `⏱ ${m}m ${s}s`;
     return `⏱ ${s}s`;
 }
 
-/* =====================
-   ANNOUNCEMENT (FIXED)
-===================== */
+/* ================= OLD ANNOUNCEMENTS RESTORED ================= */
 async function announce(line,dest,msg){
 
     const gong=document.getElementById("gong");
     try{await gong.play();}catch(e){}
 
-    let finalMsg=msg;
-    let lang="it-IT";
+    const u=new SpeechSynthesisUtterance(msg);
 
-    if(language==="it") lang="it-IT";
-    if(language==="en") lang="en-US";
-    if(language==="de") lang="de-DE";
-    if(language==="ua") lang="uk-UA";
+    u.lang =
+        language==="it"?"it-IT":
+        language==="en"?"en-US":
+        language==="de"?"de-DE":
+        "uk-UA";
 
-    const u=new SpeechSynthesisUtterance(finalMsg);
-    u.lang=lang;
     u.rate=0.9;
-
     speechSynthesis.speak(u);
 }
 
-/* =====================
-   RENDER
-===================== */
+/* ================= RENDER ================= */
 function render(){
 
     if(!currentStop) return;
 
     const now=new Date();
-
-    const nowSec =
-        now.getHours()*3600 +
-        now.getMinutes()*60 +
-        now.getSeconds();
+    const nowSec=now.getHours()*3600 + now.getMinutes()*60 + now.getSeconds();
 
     const board=document.getElementById("board");
     board.innerHTML="";
@@ -350,14 +306,15 @@ function render(){
     let data=stopTimes
         .filter(t =>
             t.stop_id===currentStop &&
-            (t.stop_sequence==="1" || t.stop_sequence===1)
+            t.departure_time &&
+            t.stop_sequence == 1
         )
         .map(t=>({
             trip_id:t.trip_id,
-            time:t.departure_time||t.arrival_time,
-            sec:timeToSeconds(t.departure_time||t.arrival_time)
+            time:t.departure_time,
+            sec:timeToSeconds(t.departure_time)
         }))
-        .filter(t=>t.sec>=nowSec);
+        .filter(t=>t.sec >= nowSec - 6);
 
     const map=new Map();
 
@@ -377,34 +334,24 @@ function render(){
 
         const line=getRoute(d.trip_id);
         const dest=getDest(d.trip_id);
-
         const diff=d.sec-nowSec;
 
         /* 🔟 10 MIN */
         if(diff<=600 && diff>595 && !announced10min[d.trip_id]){
-
             announced10min[d.trip_id]=true;
-
-            const msg=`There is Bus ${line} to ${dest} ten minute away.`;
-            announce(line,dest,msg);
+            announce(line,dest,`There is Bus ${line} to ${dest} ten minute away.`);
         }
 
         /* 🟡 5 MIN */
         if(diff<=300 && diff>295 && !announced5min[d.trip_id]){
-
             announced5min[d.trip_id]=true;
-
-            const msg=`There is Bus ${line} to ${dest} five minute away.`;
-            announce(line,dest,msg);
+            announce(line,dest,`There is Bus ${line} to ${dest} five minute away.`);
         }
 
         /* 🔴 1 MIN */
         if(diff<=60 && diff>55 && !announced1min[d.trip_id]){
-
             announced1min[d.trip_id]=true;
-
-            const msg=`The Bus Number ${line} to ${dest} is arriving please let passengers exit first.`;
-            announce(line,dest,msg);
+            announce(line,dest,`The Bus Number ${line} to ${dest} is arriving please let passengers exit first.`);
         }
 
         const tr=document.createElement("tr");
@@ -413,22 +360,20 @@ function render(){
         <td>${line}</td>
         <td>${dest}</td>
         <td>${getTimeLeft(d.time)}</td>
-        <td class="on">IN ORARIO</td>
+        <td class="on">${getStatus(diff)}</td>
         `;
 
         board.appendChild(tr);
 
         if(!spoken[line]){
-            announce(line,dest,`The. Bus ${line} to ${dest} departing.`);
+            announce(line,dest,`The Bus ${line} to ${dest} Added To The Board.`);
             spoken[line]=true;
         }
     });
 }
 
-/* LIVE */
 setInterval(render,1000);
 
-/* FULLSCREEN */
 function toggleFullscreen(){
     document.documentElement.requestFullscreen();
 }
