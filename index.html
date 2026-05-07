@@ -384,19 +384,19 @@ function render(){
         /* 🔟 10 MIN */
         if(diff<=600 && diff>595 && !announced10min[d.trip_id]){
             announced10min[d.trip_id]=true;
-            announce(line,dest,`There is Bus ${line} to ${dest} ten minute away.`);
+            announce(line,dest,`There is ${line} to ${dest} ten minute away.`);
         }
 
         /* 🟡 5 MIN */
         if(diff<=300 && diff>295 && !announced5min[d.trip_id]){
             announced5min[d.trip_id]=true;
-            announce(line,dest,`There is Bus ${line} to ${dest} five minute away.`);
+            announce(line,dest,`There is ${line} to ${dest} five minute away.`);
         }
 
         /* 🔴 1 MIN */
         if(diff<=60 && diff>55 && !announced1min[d.trip_id]){
             announced1min[d.trip_id]=true;
-            announce(line,dest,`The Bus Number ${line} to ${dest} is arriving please let passengers exit first.`);
+            announce(line,dest,`The ${line} to ${dest} is arriving please let passengers exit first.`);
         }
 
         const tr=document.createElement("tr");
@@ -411,7 +411,7 @@ function render(){
         board.appendChild(tr);
 
         if(!spoken[line]){
-            announce(line,dest,`The Bus ${line} to ${dest} Added To The Board.`);
+            announce(line,dest,`The ${line} to ${dest} Added To The Board.`);
             spoken[line]=true;
         }
     });
